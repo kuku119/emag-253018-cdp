@@ -1,0 +1,12 @@
+# vscode
+/.vscode
+/*.code-workspace
+
+# python
+__pycache__/
+*.py[cod]
+/poetry.lock
+
+# other
+/[Tt][Ee][Mm][Pp]*
+desktop.ini
