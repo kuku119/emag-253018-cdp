@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from re import compile
 from sys import stderr
 from typing import TYPE_CHECKING
@@ -14,20 +15,24 @@ from scraper_utils.utils.file_util import read_file_async
 from .exceptions import CaptchaError
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from typing import Optional, AsyncGenerator, Pattern
 
     from playwright.async_api import Browser, BrowserContext, Page, Response
 
     type StrOrPath = str | Path
+    type BrowserContextOrPage = BrowserContext | Page
 
 
 __all__ = [
+    'cwd',
     'logger',
     'check_response_captcha',
     'block_track',
     'hide_cookie_banner',
 ]
+
+
+cwd = Path.cwd()
 
 
 logger.remove()
@@ -40,20 +45,23 @@ logger.add(
     ),
 )
 
-_captcha_url_patterns: tuple[Pattern[str], ...] = (
-    compile(r'.*?emag\.ro/cart/remove.*'),
-    compile(r'.*?emag\.ro/newaddtocart.*'),
-    # TODO 产品详情页的还没做
-    # NOTICE 还有别的请求链接吗？
-)
+# _captcha_url_patterns: tuple[Pattern[str], ...] = (
+#     compile(r'.*?emag\.ro/cart/remove.*'),
+#     compile(r'.*?emag\.ro/newaddtocart.*'),
+#     # TODO 产品详情页的还没做
+#     # NOTICE 还有别的请求链接吗？
+# )
 
 
 async def check_response_captcha(response: Response) -> None:
     """通过检查响应状态码判断有无验证码，当出现验证码时，对应请求的响应状态码为 511"""
+    # TODO 是要单纯检测到验证码然后提醒，还是检测到验证码后模拟点击？
+    # FIXME 如何实时捕获 CaptchaError 并处理？
     url = response.url
     status = response.status
+    # NOTICE 好像直接检测有无 511 的状态码就行了
     # if status == 511 and any(p.search(url) is not None for p in _captcha_url_patterns):
-    if status == 511:  # NOTICE 好像直接检测有无 511 的状态码就行了
+    if status == 511:
         raise CaptchaError(url=url, message=f'在 "{url}" 检测到验证码')
 
 
@@ -61,11 +69,19 @@ _track_url_patterns: tuple[Pattern[str], ...] = (
     compile(r'.*?emag\.ro/logger.json.*'),
     compile(r'.*?emag\.ro/recommendations/by-zone-position.*'),
     compile(r'.*?emag\.ro/g/collect.*'),
+    compile(r'.*?googlesyndication\.com.*'),
+    compile(r'.*?google-analytics\.com.*'),
+    compile(r'.*?facebook\.com.*'),
+    compile(r'.*?tiktok\.com.*'),
+    compile(r'.*?snapchat\.com.*'),
+    compile(r'.*?adtrafficquality\.google.*'),
+    compile(r'.*?doubleclick\.net.*'),
+    compile(r'.*?creativecdn\.com.*'),
     # NOTICE 还有别的埋点吗？
 )
 
 
-async def block_track(context_page: BrowserContext | Page) -> None:
+async def block_track(context_page: BrowserContextOrPage) -> None:
     """屏蔽 eMAG 的页面追踪埋点"""
     for p in _track_url_patterns:
         await context_page.route(p, lambda req: req.abort())
@@ -74,12 +90,12 @@ async def block_track(context_page: BrowserContext | Page) -> None:
 _hide_cookie_banner_js: Optional[str] = None
 
 
-async def hide_cookie_banner(page: Page, js_path: StrOrPath) -> None:
+async def hide_cookie_banner(context_page: BrowserContextOrPage, js_path: StrOrPath) -> None:
     """隐藏 eMAG 的 Cookie 提醒"""
     global _hide_cookie_banner_js
     if _hide_cookie_banner_js is None:
         _hide_cookie_banner_js = await read_file_async(file=js_path, mode='str', encoding='utf-8')
-    await page.add_init_script(script=_hide_cookie_banner_js)
+    await context_page.add_init_script(script=_hide_cookie_banner_js)
 
 
 # WARNING 不好用
