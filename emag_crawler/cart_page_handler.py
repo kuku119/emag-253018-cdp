@@ -38,7 +38,7 @@ async def clear_cart(page: Page) -> None:
     """清空购物车"""
     logger.info('开始清空购物车')
 
-    # TODO 所有的 Sterge 按钮都点击一边后，是否需要检测购物车是否已经清空？
+    # TODO 所有的 Sterge 按钮都点击一遍后，是否需要检测购物车是否已经清空？
 
     sterge_buttons = page.locator('css=button.remove-product').filter(visible=True)
     for i in range(await sterge_buttons.count(), 0, -1):
