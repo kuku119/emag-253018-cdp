@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from asyncio.tasks import sleep as async_sleep
 from contextlib import asynccontextmanager
 from pathlib import Path
 from re import compile
 from sys import stderr
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -17,7 +19,7 @@ from .exceptions import CaptchaError
 if TYPE_CHECKING:
     from typing import Optional, AsyncGenerator, Pattern
 
-    from playwright.async_api import Browser, BrowserContext, Page, Response
+    from playwright.async_api import Browser, BrowserContext, Page, Response, Locator
 
     type StrOrPath = str | Path
     type BrowserContextOrPage = BrowserContext | Page
@@ -29,6 +31,7 @@ __all__ = [
     'check_response_captcha',
     'block_track',
     'hide_cookie_banner',
+    'wait_for_element',
 ]
 
 
@@ -96,6 +99,16 @@ async def hide_cookie_banner(context_page: BrowserContextOrPage, js_path: StrOrP
     if _hide_cookie_banner_js is None:
         _hide_cookie_banner_js = await read_file_async(file=js_path, mode='str', encoding='utf-8')
     await context_page.add_init_script(script=_hide_cookie_banner_js)
+
+
+async def wait_for_element(locator: Locator, interval: int = 1_000, timeout: int = 30_000) -> bool:
+    """以 `interval` 的周期检查有无特定元素"""
+    start_time = perf_counter()
+    while perf_counter() - start_time > timeout / 1000:
+        if await locator.count() > 0:
+            return True
+        await async_sleep(interval / 1000)
+    return False
 
 
 # WARNING 不好用
