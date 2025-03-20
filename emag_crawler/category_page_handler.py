@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from asyncio.locks import Lock
 from asyncio.tasks import create_task
 from math import ceil
 from re import compile
@@ -12,46 +11,74 @@ from scraper_utils.constants.time_constant import MS1000
 from scraper_utils.exceptions.browser_exception import PlaywrightError
 from scraper_utils.utils.emag_util import parse_pnk
 
-from .exceptions import ParsePNKError
+from .exceptions import ParsePNKError, NoProductCardError
 from .models import CategoryPageProduct
-from .utils import logger
+from .utils import cwd, logger, block_track, hide_cookie_banner, wait_for_element
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from playwright.async_api import BrowserContext, Page, Locator
 
 
-async def handle_cart_dialog(page: Page, lock: Lock, interval: int = 1000) -> None:
+async def handle_cart_dialog(page: Page, interval: int = 1000) -> None:
     """
     处理类目页面点击加购按钮后可能出现的弹窗
 
     当页面还未关闭时，每隔 `interval` 毫秒尝试点击一次加购弹窗的关闭按钮
-
     """
     logger.info(f'为 "{page.url}" 启动处理加购弹窗任务')
     while page.is_closed() is False:
         dialog_close_button = page.locator('xpath=//button[@class="close gtm_6046yfqs"]')
-        async with lock:
-            try:
-                await dialog_close_button.click(timeout=interval)
-            except PlaywrightError:
-                pass
+        try:
+            await dialog_close_button.click(timeout=interval)
+        except PlaywrightError:
+            pass
     logger.info(f'检测到页面 "{page.url}" 关闭，处理加购弹窗任务即将关闭')
 
 
-async def parse_first_page(context: BrowserContext, url: str, category: str):
-    """解析类目页的第 1 页"""
-    # TODO
-    cart_lock = Lock()
-
-    # 访问链接
+async def goto_category_page(
+    context: BrowserContext,
+    url: str,
+    wait_until: Literal['commit', 'domcontentloaded', 'load', 'networkidle'] = 'load',
+) -> Page:
+    """打开类目页，检查页面有无产品卡片"""
     page = await context.new_page()
-    logger.info(f'正在访问 "{category}": "{url}"')
-    # await page.goto(url, wait_until='networkidle')
-    await page.goto(url)
+
+    # 隐藏 cookie 提示
+    await hide_cookie_banner(page, js_path=cwd / 'js/hide-cookie-banner.js')
+    # 屏蔽 eMAG 埋点
+    await block_track(page)
+
+    logger.info(f'正在访问 "{page.url}"')
+    # 打开链接
+    # 要等页面加载到什么程度才好？
+    await page.goto(url, wait_until=wait_until)
+
+    # 检查页面有无产品卡片
+    if not await wait_for_element(
+        page.locator(
+            'css=div.card-item',
+            has_not=page.locator('css=span.card-v2-badge-cmp.bg-light'),
+            has=page.locator('css=button.yeahIWantThisProduct'),
+        )
+    ):
+        logger.error(f'类目页 "{page.url}" 无产品卡片')
+        raise NoProductCardError(page.url)
     logger.debug(f'访问成功 "{page.url}"')
 
+    return page
+
+
+async def handle_first_page(context: BrowserContext, url: str, category: str):
+    """打开和解析类目页的第 1 页"""
+    # TODO
+
+    # 访问链接
+    page = await goto_category_page(context, url, 'load')
+
     # 启动处理加购弹窗的任务
-    handle_cart_dialog_task = create_task(handle_cart_dialog(page, cart_lock))
+    handle_cart_dialog_task = create_task(handle_cart_dialog(page))
 
     # 获取这个类目下的产品总数
     control_label_div = page.locator('css=div.control-label.js-listing-pagination')
@@ -84,14 +111,13 @@ async def parse_first_page(context: BrowserContext, url: str, category: str):
 
     ##### 加购产品 #####
     cur = 1
-    added_products: list[CategoryPageProduct] = list()
 
     # 如果产品卡片不超过 40 个
     if product_card_count <= 40:
         while cur <= product_card_count:
             try:
-                logger.debug(f'尝试加购 "{page.url}" 的第 {cur} 个产品')
-                await add_one_product_to_cart(product_card_divs.nth(cur - 1), cart_lock)
+                logger.debug(f'"{page.url}" 的第 {cur} 个产品尝试加购')
+                await add_one_product_to_cart(product_card_divs.nth(cur - 1))
 
             # 加购失败就重试
             except PlaywrightError:
@@ -99,16 +125,25 @@ async def parse_first_page(context: BrowserContext, url: str, category: str):
 
             # 加购成功
             else:
-                pass  # TODO
+                products[cur - 1].cart_added = True
+                logger.debug(f'"{page.url}" 的第 {cur} 个产品加购成功')
 
     # 如果产品卡片超过 40 个
     else:
+        while cur <= product_card_count:
+            # 当加购到 40 个时，打开购物车处理一批产品
+            if cur == 40:
+                pass  # TODO
+
         pass  # TODO
+
+    # 处理购物车内的产品
+    # TODO
 
     await handle_cart_dialog_task
 
 
-async def parse_other_page(context: BrowserContext, url: str, category: str, lock: Lock):
+async def handle_other_page(context: BrowserContext, url: str, category: str):
     """解析类目页的 2-5 页"""
     # TODO
 
@@ -201,9 +236,7 @@ async def parse_product_card(
     )
 
 
-async def add_one_product_to_cart(product_card: Locator, lock: Lock) -> None:
+async def add_one_product_to_cart(product_card: Locator) -> None:
     """传入一个产品卡片，加购该产品"""
     add_cart_button = product_card.locator('css=button.yeahIWantThisProduct')
     await add_cart_button.click(timeout=5 * MS1000)
-
-    # TODO

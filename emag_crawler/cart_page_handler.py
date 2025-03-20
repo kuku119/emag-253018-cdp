@@ -6,30 +6,52 @@ from typing import TYPE_CHECKING
 
 from scraper_utils.constants.time_constant import MS1000
 from scraper_utils.exceptions.browser_exception import PlaywrightError
-from scraper_utils.utils.browser_util import wait_for_selector
 
-from .utils import logger
+from .utils import cwd, logger, block_track, hide_cookie_banner, wait_for_element
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from playwright.async_api import BrowserContext, Page
 
 
 __all__ = [
     'CART_PAGE_URL',
+    'goto_cart_page',
+    'parse_max_qty',
+    'clear_cart',
 ]
 
 
 CART_PAGE_URL = 'https://www.emag.ro/cart/products'
 
 
-async def goto_cart_page(context: BrowserContext) -> Page:
-    """打开购物车页"""
+async def goto_cart_page(
+    context: BrowserContext,
+    wait_until: Literal['commit', 'domcontentloaded', 'load', 'networkidle'] = 'load',
+) -> Page:
+    """打开购物车页，检查购物车内有无产品"""
     page = await context.new_page()
-    await page.goto(CART_PAGE_URL)
+    # 隐藏 cookie 提示
+    await hide_cookie_banner(page, js_path=cwd / 'js/hide-cookie-banner.js')
+    # 屏蔽 eMAG 埋点
+    await block_track(page)
+
+    logger.info('正在打开购物车页')
+    await page.goto(CART_PAGE_URL, wait_until=wait_until)
+
+    # 检查购物车内有无产品（有无可见的 Sterge 按钮）
+    if not await wait_for_element(
+        page.locator('css=button.remove-product').filter(visible=True),
+    ):
+        logger.warning('购物车为空')
+    else:
+        logger.info('成功访问购物车页')
+
     return page
 
 
-async def parse_qty(page: Page):
+async def parse_max_qty(page: Page):
     """解析购物车内产品的最大可加购数"""
     # TODO
 
@@ -53,10 +75,7 @@ async def clear_cart(page: Page) -> None:
 
 
 async def is_empty(page: Page) -> bool:
-    """
-    检测购物车是否为空
-
-    通过检测有无可见的 Sterge 按钮来判断购物车是否为空
-    """
+    """购物车是否为空"""
+    # 有无可见的 Sterge 按钮
     visible_sterge_buttons = page.locator('css=button.remove-product').filter(visible=True)
     return await visible_sterge_buttons.count() == 0
