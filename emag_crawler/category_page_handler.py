@@ -70,45 +70,40 @@ async def parse_first_page(context: BrowserContext, url: str, category: str):
     product_card_count = await product_card_divs.count()
     logger.debug(f'在 "{page.url}" 找到 {product_card_count} 个非 Promovat、非 Vezi Detalii 的产品卡片')
 
-    # # 产品 pnk 与其序号
-    # rank_pnk: dict[int, str] = dict()
-    # for i in range(1, product_card_count + 1):
-    #     u = await product_card_divs.nth(i - 1).get_attribute('data-url', timeout=MS1000)
-    #     if u is None:
-    #         logger.error(f'"{page.url}" 的第 {i} 个产品卡片的 data-url="{u}" 为空')
-    #         raise ParsePNKError('')
-    #     p = parse_pnk(u)
-    #     if p is None:
-    #         logger.error(f'"{page.url}" 的第 {i} 个产品卡片的 data-url="{u}" 中无法解析出 pnk')
-    #         raise ParsePNKError(u)
-    #     rank_pnk[i + 1] = p
+    # 整个页面内的产品卡片信息
+    products: list[CategoryPageProduct] = list()
+    for i in range(1, product_card_count + 1):
+        products.append(
+            await parse_product_card(
+                card_div=product_card_divs.nth(i - 1),
+                category=category,
+                category_url=page.url,
+                rank=i,
+            )
+        )
 
-    # # 统计产品卡片的产品信息
-    # for rank in range(1, product_card_count + 1):
-    #     pass
+    ##### 加购产品 #####
+    cur = 1
+    added_products: list[CategoryPageProduct] = list()
 
-    # ##### 加购产品 #####
-    # cur = 1
-    # added_products: list[CategoryPageProduct] = list()
+    # 如果产品卡片不超过 40 个
+    if product_card_count <= 40:
+        while cur <= product_card_count:
+            try:
+                logger.debug(f'尝试加购 "{page.url}" 的第 {cur} 个产品')
+                await add_one_product_to_cart(product_card_divs.nth(cur - 1), cart_lock)
 
-    # # 如果产品卡片不超过 40 个
-    # if product_card_count <= 40:
-    #     while cur <= product_card_count:
-    #         try:
-    #             logger.debug(f'尝试加购 "{page.url}" 的第 {cur} 个产品')
-    #             await add_one_product_to_cart(product_card_divs.nth(cur - 1), cart_lock)
+            # 加购失败就重试
+            except PlaywrightError:
+                continue
 
-    #         # 加购失败就重试
-    #         except PlaywrightError:
-    #             continue
+            # 加购成功
+            else:
+                pass  # TODO
 
-    #         # 加购成功
-    #         else:
-    #             pass  # TODO
-
-    # # 如果产品卡片超过 40 个
-    # else:
-    #     pass  # TODO
+    # 如果产品卡片超过 40 个
+    else:
+        pass  # TODO
 
     await handle_cart_dialog_task
 
@@ -202,6 +197,7 @@ async def parse_product_card(
         rating=average_rating,
         review_count=review_count,
         cart_added=False,
+        max_qty=None,
     )
 
 

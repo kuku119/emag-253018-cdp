@@ -24,20 +24,24 @@ class CategoryPageProduct(BaseModel):
     3. 来源链接，str
     4. 在来源链接的排行，正整数
     5. 是否带 Top Favorite 标志，None 或 bool，默认为 None
-    6. 价格，正小数，
+    6. 价格，None 或正小数，默认为 None
     7. 评分，None 或 [0, 5.0] 的小数，默认为 None
     8. 评论数，None 或非负整数，默认为 None
+    9. 最大可加购数，None 或非负整数，默认为 None
     """
 
     pnk: str = Field(..., description='产品编号')
     category: str = Field(..., description='产品类目')
     source_url: str = Field(..., description='来源链接')
-    rank: int = Field(..., description='在来源链接的排行', ge=1)
+    rank: int = Field(..., ge=1, description='在来源链接的排行')
     is_top_favorite: Optional[bool] = Field(None, description='是否带 Top Favorite 标志')
-    price: Optional[float] = Field(None, description='价格', gt=0)
-    rating: Optional[float] = Field(None, description='评分', ge=0, le=5.0)
-    review_count: Optional[int] = Field(None, description='评论数', ge=0)
+    price: Optional[float] = Field(None, gt=0, description='价格')
+    rating: Optional[float] = Field(None, ge=0, le=5.0, description='评分')
+    review_count: Optional[int] = Field(None, ge=0, description='评论数')
     cart_added: Optional[bool] = Field(None, description='是否已加购')
+
+    # TODO 对于在购物车里不显示 qty 的产品要怎么办
+    max_qty: Optional[int] = Field(None, ge=0, description='最大可加购数')
 
     @field_validator('pnk')
     @classmethod
