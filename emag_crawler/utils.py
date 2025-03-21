@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from asyncio.tasks import sleep as async_sleep
-from contextlib import asynccontextmanager
+from asyncio import sleep as async_sleep
 from pathlib import Path
 from re import compile
 from sys import stderr
@@ -11,28 +10,20 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from playwright.async_api import async_playwright
-from scraper_utils.utils.file_util import read_file_async
+from scraper_utils.utils.emag_util import parse_pnk as _parse_pnk
+from scraper_utils.utils.file_util import read_file
 
-from .exceptions import CaptchaError
+from .exceptions import ParsePNKError
+
 
 if TYPE_CHECKING:
-    from typing import Optional, AsyncGenerator, Pattern
+    from asyncio import Event
+    from typing import Pattern, Optional
 
-    from playwright.async_api import Browser, BrowserContext, Page, Response, Locator
+    from playwright.async_api import BrowserContext, Page, Response, Locator
 
     type StrOrPath = str | Path
     type BrowserContextOrPage = BrowserContext | Page
-
-
-__all__ = [
-    'cwd',
-    'logger',
-    'check_response_captcha',
-    'block_track',
-    'hide_cookie_banner',
-    'wait_for_element',
-]
 
 
 cwd = Path.cwd()
@@ -46,26 +37,21 @@ logger.add(
         '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] >>> '
         '<level>{message}</level>'
     ),
+    filter=lambda record: len(record['extra']) == 0,
 )
 
-# _captcha_url_patterns: tuple[Pattern[str], ...] = (
-#     compile(r'.*?emag\.ro/cart/remove.*'),
-#     compile(r'.*?emag\.ro/newaddtocart.*'),
-#     # TODO 产品详情页的还没做
-#     # NOTICE 还有别的请求链接吗？
-# )
 
-
-async def check_response_captcha(response: Response) -> None:
+async def check_response_captcha(response: Response, allow_flag: Event) -> None:
     """通过检查响应状态码判断有无验证码，当出现验证码时，对应请求的响应状态码为 511"""
-    # TODO 是要单纯检测到验证码然后提醒，还是检测到验证码后模拟点击？
-    # FIXME 如何实时捕获 CaptchaError 并处理？
+    page = response.frame.page
     url = response.url
     status = response.status
-    # NOTICE 好像直接检测有无 511 的状态码就行了
-    # if status == 511 and any(p.search(url) is not None for p in _captcha_url_patterns):
+    # 当检测到验证码时清空 event，不允许再继续爬取
     if status == 511:
-        raise CaptchaError(url=url, message=f'在 "{url}" 检测到验证码')
+        logger.error(f'在 "{page.url}" 页面的 "{url}" 请求检测到验证码')
+        allow_flag.clear()
+    else:
+        allow_flag.set()
 
 
 _track_url_patterns: tuple[Pattern[str], ...] = (
@@ -93,11 +79,13 @@ async def block_track(context_page: BrowserContextOrPage) -> None:
 _hide_cookie_banner_js: Optional[str] = None
 
 
-async def hide_cookie_banner(context_page: BrowserContextOrPage, js_path: StrOrPath) -> None:
+async def hide_cookie_banner(context_page: BrowserContextOrPage) -> None:
     """隐藏 eMAG 的 Cookie 提醒"""
     global _hide_cookie_banner_js
     if _hide_cookie_banner_js is None:
-        _hide_cookie_banner_js = await read_file_async(file=js_path, mode='str', encoding='utf-8')
+        _hide_cookie_banner_js = await read_file(
+            file=cwd / 'js/hide-cookie-banner.js', mode='str', async_mode=True
+        )
     await context_page.add_init_script(script=_hide_cookie_banner_js)
 
 
@@ -111,26 +99,33 @@ async def wait_for_element(locator: Locator, interval: int = 1_000, timeout: int
     return False
 
 
-# WARNING 不好用
-@asynccontextmanager
-async def connect_brightdata_browser(
-    ws_url: str,
-    *,
-    headers: Optional[dict[str, str]] = None,
-    timeout: Optional[int] = None,
-    slow_mo: Optional[int] = None,
-) -> AsyncGenerator[Browser]:
-    """连接到 BrightData 提供的 ScrapingBrowser"""
-    async with async_playwright() as pwr:
-        browser = None
+def build_category_url(category: str, page: int = 1) -> str:
+    """构造类目页链接"""
+    if page <= 0:
+        raise ValueError(f'页码必须为正整数，而不是 {page}')
+    if page == 1:
+        return f'https://www.emag.ro/{category}/c'
+    return f'https://www.emag.ro/{category}/p{page}/c'
+
+
+_parse_category_page_pattern = compile(r'/p{(\d+)}/c')
+
+
+def parse_category_page(url: str) -> Optional[int]:
+    """从类目链接解析当前页码"""
+    m = _parse_category_page_pattern.search(url)
+    if m is not None:
         try:
-            browser = await pwr.chromium.connect_over_cdp(
-                endpoint_url=ws_url,
-                headers=headers,
-                timeout=timeout,
-                slow_mo=slow_mo,
-            )
-            yield browser
-        finally:
-            if browser is not None and browser.is_connected():
-                await browser.close()
+            return int(m.group(1))
+        except ValueError:
+            pass
+
+
+def parse_pnk_from_url(v) -> str:
+    """从链接中提取 pnk"""
+    if v is None:
+        raise ParsePNKError('')
+    r = _parse_pnk(v)
+    if r is None:
+        raise ParsePNKError(v)
+    return r

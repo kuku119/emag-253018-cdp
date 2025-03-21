@@ -51,7 +51,7 @@ class CategoryPageProduct(BaseModel):
         return v
 
 
-class DetailPageProduct:
-    """详情页能爬出的产品数据"""
+class ProductPageProduct:
+    """产品详情页能爬出的产品数据"""
 
     # TODO

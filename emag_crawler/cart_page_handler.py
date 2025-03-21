@@ -15,14 +15,6 @@ if TYPE_CHECKING:
     from playwright.async_api import BrowserContext, Page
 
 
-__all__ = [
-    'CART_PAGE_URL',
-    'goto_cart_page',
-    'parse_max_qty',
-    'clear_cart',
-]
-
-
 CART_PAGE_URL = 'https://www.emag.ro/cart/products'
 
 

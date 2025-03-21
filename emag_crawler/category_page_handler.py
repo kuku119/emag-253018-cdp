@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from asyncio.tasks import create_task
+from asyncio import Event, create_task
 from math import ceil
 from re import compile
 from typing import TYPE_CHECKING
@@ -75,7 +75,7 @@ async def handle_first_page(context: BrowserContext, url: str, category: str):
     # TODO
 
     # 访问链接
-    page = await goto_category_page(context, url, 'load')
+    page = await goto_category_page(context, url, , 'load')
 
     # 启动处理加购弹窗的任务
     handle_cart_dialog_task = create_task(handle_cart_dialog(page))
@@ -111,6 +111,7 @@ async def handle_first_page(context: BrowserContext, url: str, category: str):
 
     ##### 加购产品 #####
     cur = 1
+    # TODO 加购前检查验证码的 event 有没有触发，没触发就可以继续加购，触发了就保存已经爬取完成的数据
 
     # 如果产品卡片不超过 40 个
     if product_card_count <= 40:

@@ -9,12 +9,6 @@ if TYPE_CHECKING:
     pass
 
 
-__all__ = [
-    'CaptchaError',
-    'ParsePNKError',
-]
-
-
 class CaptchaError(Exception):
     """遇到验证码时的异常"""
 
@@ -36,17 +30,6 @@ class ParsePNKError(Exception):
 
     def __str__(self):
         return self.origin_str
-
-
-class NoProductCardError(Exception):
-    """在类目页找不到产品卡片时的异常"""
-
-    def __init__(self, url: str, *args: object) -> None:
-        super().__init__(*args)
-        self.url = unquote(url)
-
-    def __str__(self):
-        return self.url
 
 
 class CartEmptyError(Exception):
