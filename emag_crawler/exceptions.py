@@ -30,7 +30,3 @@ class ParsePNKError(Exception):
 
     def __str__(self):
         return self.origin_str
-
-
-class CartEmptyError(Exception):
-    """购物车页无产品时的异常"""

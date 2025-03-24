@@ -13,9 +13,9 @@ if TYPE_CHECKING:
     pass
 
 
-class CategoryPageProduct(BaseModel):
+class ProductCardItem(BaseModel):
     """
-    类目页能爬出的产品数据
+    类目页的产品卡片所包含的产品数据
 
     ---
 
@@ -40,7 +40,6 @@ class CategoryPageProduct(BaseModel):
     review_count: Optional[int] = Field(None, ge=0, description='评论数')
     cart_added: Optional[bool] = Field(None, description='是否已加购')
 
-    # TODO 对于在购物车里不显示 qty 的产品要怎么办
     max_qty: Optional[int] = Field(None, ge=0, description='最大可加购数')
 
     @field_validator('pnk')
@@ -49,9 +48,3 @@ class CategoryPageProduct(BaseModel):
         if not validate_pnk(v):
             raise ParsePNKError(v)
         return v
-
-
-class ProductPageProduct:
-    """产品详情页能爬出的产品数据"""
-
-    # TODO

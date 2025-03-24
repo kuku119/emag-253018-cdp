@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from asyncio import sleep as async_sleep
 from pathlib import Path
-from re import compile
+from re import compile as re_compile, search as re_search
 from sys import stderr
 from time import perf_counter
 from typing import TYPE_CHECKING
@@ -17,7 +17,6 @@ from .exceptions import ParsePNKError
 
 
 if TYPE_CHECKING:
-    from asyncio import Event
     from typing import Pattern, Optional
 
     from playwright.async_api import BrowserContext, Page, Response, Locator
@@ -27,6 +26,7 @@ if TYPE_CHECKING:
 
 
 cwd = Path.cwd()
+CART_PAGE_URL = 'https://www.emag.ro/cart/products'
 
 
 logger.remove()
@@ -39,33 +39,49 @@ logger.add(
     ),
     filter=lambda record: len(record['extra']) == 0,
 )
-
-
-async def check_response_captcha(response: Response, allow_flag: Event) -> None:
-    """通过检查响应状态码判断有无验证码，当出现验证码时，对应请求的响应状态码为 511"""
-    page = response.frame.page
-    url = response.url
-    status = response.status
-    # 当检测到验证码时清空 event，不允许再继续爬取
-    if status == 511:
-        logger.error(f'在 "{page.url}" 页面的 "{url}" 请求检测到验证码')
-        allow_flag.clear()
-    else:
-        allow_flag.set()
+logger.add(
+    Path.cwd() / 'logs/log.log',
+    format=(
+        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
+        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] >>> '
+        '<level>{message}</level>'
+    ),
+    filter=lambda record: len(record['extra']) == 0,
+)
+logger.add(
+    stderr,
+    format=(
+        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
+        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] '
+        '[<green>{extra[category]}</green>] >>> '
+        '<level>{message}</level>'
+    ),
+    filter=lambda record: 'category' in record['extra'],
+)
+logger.add(
+    Path.cwd() / 'logs/log.log',
+    format=(
+        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
+        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] '
+        '[<green>{extra[category]}</green>] >>> '
+        '<level>{message}</level>'
+    ),
+    filter=lambda record: 'category' in record['extra'],
+)
 
 
 _track_url_patterns: tuple[Pattern[str], ...] = (
-    compile(r'.*?emag\.ro/logger.json.*'),
-    compile(r'.*?emag\.ro/recommendations/by-zone-position.*'),
-    compile(r'.*?emag\.ro/g/collect.*'),
-    compile(r'.*?googlesyndication\.com.*'),
-    compile(r'.*?google-analytics\.com.*'),
-    compile(r'.*?facebook\.com.*'),
-    compile(r'.*?tiktok\.com.*'),
-    compile(r'.*?snapchat\.com.*'),
-    compile(r'.*?adtrafficquality\.google.*'),
-    compile(r'.*?doubleclick\.net.*'),
-    compile(r'.*?creativecdn\.com.*'),
+    re_compile(r'.*?emag\.ro/logger.json.*'),
+    re_compile(r'.*?emag\.ro/recommendations/by-zone-position.*'),
+    re_compile(r'.*?emag\.ro/g/collect.*'),
+    re_compile(r'.*?googlesyndication\.com.*'),
+    re_compile(r'.*?google-analytics\.com.*'),
+    re_compile(r'.*?facebook\.com.*'),
+    re_compile(r'.*?tiktok\.com.*'),
+    re_compile(r'.*?snapchat\.com.*'),
+    re_compile(r'.*?adtrafficquality\.google.*'),
+    re_compile(r'.*?doubleclick\.net.*'),
+    re_compile(r'.*?creativecdn\.com.*'),
     # NOTICE 还有别的埋点吗？
 )
 
@@ -101,24 +117,16 @@ async def wait_for_element(locator: Locator, interval: int = 1_000, timeout: int
 
 def build_category_url(category: str, page: int = 1) -> str:
     """构造类目页链接"""
+    category = category.lower()
+    if re_search(r'^[a-z0-9-]+$', category) is None:
+        raise ValueError(f'"{category}" 不符合类目规范')
+
     if page <= 0:
         raise ValueError(f'页码必须为正整数，而不是 {page}')
+
     if page == 1:
         return f'https://www.emag.ro/{category}/c'
     return f'https://www.emag.ro/{category}/p{page}/c'
-
-
-_parse_category_page_pattern = compile(r'/p{(\d+)}/c')
-
-
-def parse_category_page(url: str) -> Optional[int]:
-    """从类目链接解析当前页码"""
-    m = _parse_category_page_pattern.search(url)
-    if m is not None:
-        try:
-            return int(m.group(1))
-        except ValueError:
-            pass
 
 
 def parse_pnk_from_url(v) -> str:
