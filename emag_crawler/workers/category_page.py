@@ -38,7 +38,7 @@ class CategoryPageWorker:
     async def start_scrape(self) -> list[ProductCardItem]:
         """开始爬取"""
 
-        # BUG 抓不到 open_cart_page 的 PlaywrightError
+        # BUG 抓不到 PlaywrightError
 
         # 处理第一页
         try:
@@ -52,6 +52,8 @@ class CategoryPageWorker:
             logger.error(f'爬取第 1 页时触发验证\n{ce}')
         except PlaywrightError as pe:
             logger.error(f'爬取第 1 页时出错\n{pe}')
+        except BaseException as be:
+            logger.error(be)
 
         else:
             # 这个类目能爬取多少页
@@ -85,6 +87,10 @@ class CategoryPageWorker:
                     break
                 except PlaywrightError as pe:
                     logger.error(f'爬取第 {i} 页时出错\n{pe}')
+                    break
+                except BaseException as be:
+                    logger.error(be)
+                    break
 
                 else:
                     res, flag = await handle_products(page, self.category, True, self.logger)

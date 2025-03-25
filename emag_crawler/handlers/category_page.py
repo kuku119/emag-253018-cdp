@@ -147,12 +147,13 @@ async def add_cart(page: Page, card_div: Locator, rank: int, logger: Logger) -> 
         # ) as response_event:
         async with page.expect_response(
             lambda r: _add_cart_response_filter(r, data_offer_id)
-        ) as response_event:
+        ) as response_event:  # BUG 明明已经点击
             try:
                 await add_cart_button.click(timeout=5 * MS1000)
             except PlaywrightError as pe:  # 加购失败时会重试
                 logger.warning(f'尝试加购第 {rank} 个产品时出错\n{pe}')
                 continue
+            logger.debug(f'等待 "{page.url}" 的加购请求响应 data-offer-id={data_offer_id}, rank={rank}')
         response = await response_event.value
         if response.ok:
             break
