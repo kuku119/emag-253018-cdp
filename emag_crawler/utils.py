@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from scraper_utils.utils.emag_util import parse_pnk as _parse_pnk
 from scraper_utils.utils.file_util import read_file
+from scraper_utils.utils.time_util import now_str
 
 from .exceptions import ParsePNKError
 
@@ -30,6 +31,9 @@ CART_PAGE_URL = 'https://www.emag.ro/cart/products'
 
 
 logger.remove()
+_log_dir = cwd / 'logs/'
+_log_dir.mkdir(exist_ok=True)
+_log_file = _log_dir / f'{now_str('%Y_%m_%d-%H_%M_%S')}.log'
 logger.add(
     stderr,
     format=(
@@ -40,13 +44,14 @@ logger.add(
     filter=lambda record: len(record['extra']) == 0,
 )
 logger.add(
-    Path.cwd() / 'logs/log.log',
+    _log_file,
     format=(
         '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
         '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] >>> '
         '<level>{message}</level>'
     ),
     filter=lambda record: len(record['extra']) == 0,
+    enqueue=True,
 )
 logger.add(
     stderr,
@@ -59,7 +64,7 @@ logger.add(
     filter=lambda record: 'category' in record['extra'],
 )
 logger.add(
-    Path.cwd() / 'logs/log.log',
+    _log_file,
     format=(
         '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
         '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] '
@@ -67,6 +72,7 @@ logger.add(
         '<level>{message}</level>'
     ),
     filter=lambda record: 'category' in record['extra'],
+    enqueue=True,
 )
 
 
