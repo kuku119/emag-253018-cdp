@@ -74,20 +74,6 @@ async def wait_for_element(locator: Locator, interval: int = 1_000, timeout: int
     return False
 
 
-def build_category_url(category: str, page: int = 1) -> str:
-    """构造类目页链接"""
-    category = category.lower()
-    if re_search(r'^[a-z0-9-]+$', category) is None:
-        raise ValueError(f'"{category}" 不符合类目规范')
-
-    if page <= 0:
-        raise ValueError(f'页码必须为正整数，而不是 {page}')
-
-    if page == 1:
-        return f'https://www.emag.ro/{category}/c'
-    return f'https://www.emag.ro/{category}/p{page}/c'
-
-
 def parse_pnk_from_url(v) -> str:
     """从链接中提取 pnk"""
     if v is None:

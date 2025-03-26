@@ -6,6 +6,7 @@ from sys import stderr
 from loguru import logger
 from scraper_utils.utils.time_util import now_str
 
+
 _cwd = Path.cwd()
 
 logger.remove()
