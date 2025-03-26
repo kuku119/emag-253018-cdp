@@ -11,3 +11,4 @@ __pycache__/
 # other
 /[Tt][Ee][Mm][Pp]*
 desktop.ini
+*.log
