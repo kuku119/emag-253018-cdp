@@ -31,6 +31,7 @@ class ProductCardItem(BaseModel):
     """
 
     pnk: str = Field(..., description='产品编号')
+    product_id: str = Field(..., description='类目页和详情页的 data-offer-id、购物车页的 data-id')
     category: str = Field(..., description='产品类目')
     source_url: str = Field(..., description='来源链接')
     rank: int = Field(..., ge=1, description='在来源链接的排行')

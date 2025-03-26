@@ -5,14 +5,11 @@ from __future__ import annotations
 from asyncio import sleep as async_sleep
 from pathlib import Path
 from re import compile as re_compile, search as re_search
-from sys import stderr
 from time import perf_counter
 from typing import TYPE_CHECKING
 
-from loguru import logger
 from scraper_utils.utils.emag_util import parse_pnk as _parse_pnk
 from scraper_utils.utils.file_util import read_file
-from scraper_utils.utils.time_util import now_str
 
 from .exceptions import ParsePNKError
 
@@ -20,7 +17,7 @@ from .exceptions import ParsePNKError
 if TYPE_CHECKING:
     from typing import Pattern, Optional
 
-    from playwright.async_api import BrowserContext, Page, Response, Locator
+    from playwright.async_api import BrowserContext, Page, Locator
 
     type StrOrPath = str | Path
     type BrowserContextOrPage = BrowserContext | Page
@@ -30,56 +27,11 @@ cwd = Path.cwd()
 CART_PAGE_URL = 'https://www.emag.ro/cart/products'
 
 
-logger.remove()
-_log_dir = cwd / 'logs/'
-_log_dir.mkdir(exist_ok=True)
-_log_file = _log_dir / f'{now_str('%Y_%m_%d-%H_%M_%S')}.log'
-logger.add(
-    stderr,
-    format=(
-        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
-        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] >>> '
-        '<level>{message}</level>'
-    ),
-    filter=lambda record: len(record['extra']) == 0,
-)
-logger.add(
-    _log_file,
-    format=(
-        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
-        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] >>> '
-        '<level>{message}</level>'
-    ),
-    filter=lambda record: len(record['extra']) == 0,
-    enqueue=True,
-)
-logger.add(
-    stderr,
-    format=(
-        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
-        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] '
-        '[<green>{extra[category]}</green>] >>> '
-        '<level>{message}</level>'
-    ),
-    filter=lambda record: 'category' in record['extra'],
-)
-logger.add(
-    _log_file,
-    format=(
-        '[<green>{time:HH:mm:ss}</green>] [<level>{level:.3}</level>] '
-        '[<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>] '
-        '[<green>{extra[category]}</green>] >>> '
-        '<level>{message}</level>'
-    ),
-    filter=lambda record: 'category' in record['extra'],
-    enqueue=True,
-)
-
-
 _track_url_patterns: tuple[Pattern[str], ...] = (
     re_compile(r'.*?emag\.ro/logger.json.*'),
     re_compile(r'.*?emag\.ro/recommendations/by-zone-position.*'),
     re_compile(r'.*?emag\.ro/g/collect.*'),
+    re_compile(r'.*?emag\.ro/favorites.*'),
     re_compile(r'.*?googlesyndication\.com.*'),
     re_compile(r'.*?google-analytics\.com.*'),
     re_compile(r'.*?facebook\.com.*'),
@@ -88,6 +40,7 @@ _track_url_patterns: tuple[Pattern[str], ...] = (
     re_compile(r'.*?adtrafficquality\.google.*'),
     re_compile(r'.*?doubleclick\.net.*'),
     re_compile(r'.*?creativecdn\.com.*'),
+    re_compile(r'.*?ingest\.de\.sentry\.io.*'),
     # NOTICE 还有别的埋点吗？
 )
 

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from scraper_utils.constants.time_constant import MS1000
 from scraper_utils.exceptions.browser_exception import PlaywrightError
-from scraper_utils.utils.browser_util import wait_for_selector
 
 from .cart_page import clear_cart, open_url as open_cart_page, parse_max_qty
 from ..exceptions import CaptchaError, ParsePNKError
@@ -36,7 +35,7 @@ async def open_url(
     await block_track(page)
 
     response = await page.goto(url, wait_until=wait_until)
-    if response is None or response.status == 511:  # 有效
+    if response is None or response.status == 511:
         raise CaptchaError(url, f'尝试访问 "{url}" 时遇到验证')
 
     return page
@@ -67,6 +66,9 @@ async def parse_card(
     if data_url is None:
         raise ParsePNKError('')
     pnk = parse_pnk_from_url(data_url)
+
+    # 解析 product-id
+    
 
     # 解析是否带 Top Favorite 标志
     top_favorite_span = card_div.locator(
@@ -120,45 +122,55 @@ async def parse_card(
             f'第 {rank} 个产品卡片，评分和评论数不同时为空或同时非空，评分="{average_rating}"评论数="{review_count}"'
         )
 
-    return ProductCardItem(
-        pnk=pnk,
-        category=category,
-        source_url=source_url,
-        rank=rank,
-        is_top_favorite=top_favorite,
-        price=price,
-        rating=average_rating,
-        review_count=review_count,
-        cart_added=False,
-        max_qty=None,
-    )
+    # return ProductCardItem(
+    #     pnk=pnk,
+    #     category=category,
+    #     source_url=source_url,
+    #     rank=rank,
+    #     is_top_favorite=top_favorite,
+    #     price=price,
+    #     rating=average_rating,
+    #     review_count=review_count,
+    #     cart_added=False,
+    #     max_qty=None,
+    # )
 
 
 async def add_cart(page: Page, card_div: Locator, rank: int, logger: Logger) -> None:
     """传入一个产品卡片，将该产品添加到购物车"""
     add_cart_button = card_div.locator('css=button.yeahIWantThisProduct[data-offer-id]')
     data_offer_id: str = await add_cart_button.get_attribute('data-offer-id', timeout=MS1000)  # type: ignore
+    data_pnk: str = await add_cart_button.get_attribute('data-pnk', timeout=MS1000)  # type: ignore
 
     # TODO 如何检测购物车已满的情况？
+    # TODO 如何检测加购成功
+    # BUG 有时会出现
 
     while True:
+        if page.is_closed():
+            logger.error('页面关闭')
+            break
+
         # async with page.expect_response(
         #     compile(rf'.*?emag\.ro/newaddtocart.*?X-Product-Id={data_offer_id}.*')
         # ) as response_event:
-        async with page.expect_response(
-            lambda r: _add_cart_response_filter(r, data_offer_id)
-        ) as response_event:  # BUG 明明已经点击
-            try:
-                await add_cart_button.click(timeout=5 * MS1000)
-            except PlaywrightError as pe:  # 加购失败时会重试
-                logger.warning(f'尝试加购第 {rank} 个产品时出错\n{pe}')
-                continue
-            logger.debug(f'等待 "{page.url}" 的加购请求响应 data-offer-id={data_offer_id}, rank={rank}')
-        response = await response_event.value
-        if response.ok:
-            break
-        if response.status == 511:  # TODO 待测试
-            raise CaptchaError(page.url, f'尝试加购第 {rank} 个的产品时遇到验证')
+
+        try:
+            async with page.expect_response(
+                lambda r: _add_cart_response_filter(r, data_offer_id)
+            ) as response_event:
+                await add_cart_button.click(timeout=MS1000)
+                # logger.debug(f'等待第 {rank} 个加购请求响应 data-offer-id={data_offer_id}')
+        except PlaywrightError as pe:
+            logger.warning(f'尝试加购第 {rank} 个产品时出错\n{pe}')
+            continue
+        else:
+            response = await response_event.value
+            if response.ok:
+                logger.debug(f'加购第 {rank} 个产品成功 pnk="{data_pnk}"')
+                break
+            if response.status == 511:
+                raise CaptchaError(page.url, f'尝试加购第 {rank} 个的产品时遇到验证')
 
 
 def _add_cart_response_filter(response: Response, data_offer_id: str) -> bool:
@@ -233,7 +245,7 @@ async def handle_products(
                 break
 
             # 当加购到 40 个时，打开购物车处理一批产品
-            if i == 39:
+            if i == 40:
                 try:
                     await handle_added_products(page, result, need_clear_cart, logger)
                 except CaptchaError as ce:

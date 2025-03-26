@@ -32,31 +32,14 @@ async def open_url(
     await block_track(page)
 
     response = await page.goto(CART_PAGE_URL, wait_until=wait_until)
-    if response is None or response.status == 511:  # 有效
+    if response is None or response.status == 511:
         raise CaptchaError(CART_PAGE_URL, '尝试访问购物车页时遇到验证')
 
     return page
 
 
-# BUG 不能完全清空购物车
-# 直接点击所有 Sterge 的方式
-async def clear_cart(page: Page, logger: Logger) -> None:
-    """清空购物车"""
-    logger.info('清空购物车')
-
-    # 全部可点击的 Sterge 按钮
-    sterge_buttons = page.locator('css=button.remove-product[data-line]').filter(visible=True)
-
-    for i in range(await sterge_buttons.count(), 0, -1):
-        try:
-            await sterge_buttons.nth(i).click(timeout=MS1000)
-        except PlaywrightError as pe:
-            logger.warning(f'尝试点击 Sterge#{i} 时出错\n{pe}')
-            continue
-
-
-# 点击 Sterge 按钮，然后等待响应判断是否 Sterge 成功、有无触发验证
-# BUG
+# # BUG 不能完全清空购物车
+# # 直接点击所有 Sterge 的方式
 # async def clear_cart(page: Page, logger: Logger) -> None:
 #     """清空购物车"""
 #     logger.info('清空购物车')
@@ -64,47 +47,78 @@ async def clear_cart(page: Page, logger: Logger) -> None:
 #     # 全部可点击的 Sterge 按钮
 #     sterge_buttons = page.locator('css=button.remove-product[data-line]').filter(visible=True)
 
-#     click_sterge_tasks = [click_sterge(page, b, logger) for b in await sterge_buttons.all()]
-#     sterge_results = await gather(*click_sterge_tasks)
-#     if False in sterge_results:
-#         raise CaptchaError(CART_PAGE_URL, '尝试清空购物车时遇到验证')
+#     # TEMP
+#     await sterge_buttons.highlight()
+#     print('...')
+#     # TEMP
+
+#     for i in range(await sterge_buttons.count(), 0, -1):
+#         try:
+#             await sterge_buttons.nth(i).click(timeout=MS1000)
+#         except PlaywrightError as pe:
+#             logger.warning(f'尝试点击 Sterge#{i} 时出错\n{pe}')
+#             continue
 
 
-# async def click_sterge(page: Page, button: Locator, logger: Logger) -> bool:
-#     """点击单个 Sterge 按钮，返回是否 Sterge 成功"""
+# 点击 Sterge 按钮，然后等待响应判断是否 Sterge 成功、有无触发验证
+# BUG
+async def clear_cart(page: Page, logger: Logger) -> None:
+    """清空购物车"""
+    logger.info('清空购物车')
 
-#     # BUG Sterge 请求的响应是成功的，但还是会重复点击加购按钮
+    # 全部可点击的 Sterge 按钮
+    sterge_buttons = page.locator('css=button.remove-product[data-line]').filter(visible=True)
 
-#     data_line: str = await button.get_attribute('data-line', timeout=MS1000)  # type: ignore
-
-#     while True:
-#         # async with page.expect_response(compile(r'.*?emag\.ro/cart/remove.*')) as response_event:
-#         async with page.expect_response(lambda r: _sterge_response_filter(r, data_line)) as response_event:
-#             try:
-#                 await button.click(timeout=MS1000)
-#             except PlaywrightError as pe:
-#                 logger.warning(f'尝试点击 Sterge 时出错 data-line={data_line}\n{pe}')
-#                 continue
-#         response = await response_event.value
-#         response.request.post_data_json
-#         if response.ok:
-#             logger.debug(f'Sterge 成功 data-line={data_line}')
-#             return True
-#         if response.status == 511:  # TODO 待测试
-#             return False
+    click_sterge_tasks = [click_sterge(page, b, logger) for b in await sterge_buttons.all()]
+    sterge_results = await gather(*click_sterge_tasks)
+    if False in sterge_results:
+        raise CaptchaError(CART_PAGE_URL, '尝试清空购物车时遇到验证')
 
 
-# def _sterge_response_filter(response: Response, data_line: str) -> bool:
-#     """筛选 Sterge 的请求"""
-#     if compile(r'.*?emag\.ro/cart/remove.*').search(response.url) is None:
-#         return False
+async def click_sterge(page: Page, button: Locator, logger: Logger) -> bool:
+    """点击单个 Sterge 按钮，返回是否 Sterge 成功"""
 
-#     request = response.request
+    # BUG Sterge 请求的响应是成功的，但还是会重复点击加购按钮
 
-#     if request.method == 'GET' or request.post_data is None:
-#         return False
+    data_line: str = await button.get_attribute('data-line', timeout=MS1000)  # type: ignore
 
-#     return data_line in request.post_data
+    while True:
+        if page.is_closed():
+            return False
+
+        # async with page.expect_response(compile(r'.*?emag\.ro/cart/remove.*')) as response_event:
+
+        try:
+            async with page.expect_response(
+                lambda r: _sterge_response_filter(r, data_line)
+            ) as response_event:
+                try:
+                    await button.click(timeout=MS1000)
+                except PlaywrightError as pe:
+                    logger.warning(f'尝试点击 Sterge 时出错 data-line={data_line}\n{pe}')
+        except PlaywrightError as pe:
+            logger.warning(f'尝试等待 Sterge 响应时出错 data-line={data_line}\n{pe}')
+            continue
+        response = await response_event.value
+        response.request.post_data_json
+        if response.ok:
+            logger.debug(f'Sterge 成功 data-line={data_line}')
+            return True
+        if response.status == 511:
+            return False
+
+
+def _sterge_response_filter(response: Response, data_line: str) -> bool:
+    """筛选 Sterge 的请求"""
+    if compile(r'.*?emag\.ro/cart/remove.*').search(response.url) is None:
+        return False
+
+    request = response.request
+
+    if request.method == 'GET' or request.post_data is None:
+        return False
+
+    return data_line in request.post_data
 
 
 async def parse_max_qty(page: Page, product: ProductCardItem, logger: Logger) -> None:
@@ -141,22 +155,3 @@ async def parse_max_qty(page: Page, product: ProductCardItem, logger: Logger) ->
         else:
             product.max_qty = max_qty
             break
-
-
-# async def handle_cart(
-#     context: BrowserContext, products: list[ProductCardItem], logger: Logger, need_clear_cart: bool
-# ) -> list[ProductCardItem]:
-#     """
-#     1. 打开购物车页
-#     2. 按照产品的 pnk 解析最大可加购数
-#     3. 根据 `need_clear_cart` 清空购物车
-#     """
-
-#     page = await open_url(context, logger, 'networkidle')
-#     result = [await parse_max_qty(page, p, logger) for p in products]
-
-#     try:
-#         if need_clear_cart:
-#             await clear_cart(page, logger)
-#     finally:  # BUG 异常会被吞掉
-#         return result
